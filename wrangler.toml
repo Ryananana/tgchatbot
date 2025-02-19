@@ -1,0 +1,17 @@
+name = "tgchatbot"
+type = "javascript"
+account_id = "YOUR_ACCOUNT_ID"
+workers_dev = true
+# 如需绑定域名，请配置 route 与 zone_id
+# route = "https://your-domain.example.com/*"
+# zone_id = "YOUR_ZONE_ID"
+
+[vars]
+ENV_BOT_TOKEN = "your_telegram_bot_token"
+ENV_BOT_SECRET = "your_secret_token"
+ENV_ADMIN_UID = "your_admin_uid"
+
+[[kv_namespaces]]
+binding = "tgchatbot"
+id = "YOUR_KV_NAMESPACE_ID"
+# preview_id = "YOUR_KV_NAMESPACE_PREVIEW_ID"  # 如需预览环境，请取消注释
