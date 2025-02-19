@@ -192,6 +192,7 @@ async function onMessage(message) {
 }
 
 async function handleUid(message) {
+  await deleteMessage(message.chat.id, message.message_id);
   // Replies with the user's ID.
   const userId = message.from.id;
   const responseText = `Your user ID is: ${userId}`;
