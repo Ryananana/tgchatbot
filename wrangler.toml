@@ -1,5 +1,5 @@
 name = "tgchatbot"
-type = "javascript"
+main = "worker.js"
 account_id = "YOUR_ACCOUNT_ID"
 workers_dev = true
 # 如需绑定域名，请配置 route 与 zone_id
