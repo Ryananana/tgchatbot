@@ -45,3 +45,8 @@ This project uses Cloudflare Workers to implement a Telegram bot that forwards u
 
 请确保 Webhook secret token 配置正确，以防止未授权请求。  
 Ensure the Webhook secret token is correctly configured to prevent unauthorized requests.
+
+## furthur questions / 进一步问题
+
+**English:** Further questions: tg @chatwithmor_bot  
+**中文:** 进一步问题请联系: tg @chatwithmor_bot
