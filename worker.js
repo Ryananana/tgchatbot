@@ -1,11 +1,11 @@
-// Optimized Cloudflare Worker for Telegram Bot forwarding.
-// Removed redundant comments; added necessary English comments and reordered functions.
-
+// -----------------------
+// Global constants & commands
+// -----------------------
 const TOKEN = ENV_BOT_TOKEN;
 const WEBHOOK = '/endpoint';
 const SECRET = ENV_BOT_SECRET;
 const ADMIN_UID = ENV_ADMIN_UID;
-// KV namespace used for storing state data
+// KV namespace for state storage
 const KV_NAMESPACE = tgchatbot;
 
 // Key prefixes for KV storage
@@ -13,8 +13,7 @@ const LAST_USER_KEY = 'last_user';
 const USER_MESSAGES_KEY_PREFIX = 'user_message_';
 const ADMIN_RESPONSES_KEY_PREFIX = 'admin_response_';
 
-// Define available commands for admin and guest users.
-// Added public command "/uid" to allow users to retrieve their own user id.
+// Define commands for admin and guest users.
 const commands = {
   admin: [
     { command: 'help', description: '显示帮助信息' },
@@ -32,13 +31,15 @@ const commands = {
   ]
 };
 
+// -----------------------
 // Utility functions
+// -----------------------
 function apiUrl(methodName) {
   return `https://api.telegram.org/bot${TOKEN}/${methodName}`;
 }
 
 async function sendMessage(chatId, text, options = {}) {
-  // Sends a message with optional parameters (e.g. message_thread_id)
+  // Send message with optional parameters.
   const params = { chat_id: chatId, text, parse_mode: 'HTML', ...options };
   const response = await fetch(apiUrl('sendMessage'), {
     method: 'POST',
@@ -49,7 +50,7 @@ async function sendMessage(chatId, text, options = {}) {
 }
 
 async function sendPlainText(chatId, text) {
-  // Sends a plain text message.
+  // Send plain text message.
   const response = await fetch(apiUrl('sendMessage'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -59,7 +60,7 @@ async function sendPlainText(chatId, text) {
 }
 
 async function sendSticker(chatId, fileId) {
-  // Sends a sticker message.
+  // Send sticker.
   const response = await fetch(apiUrl('sendSticker'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -69,7 +70,7 @@ async function sendSticker(chatId, fileId) {
 }
 
 async function sendPhoto(chatId, fileId, caption = '') {
-  // Sends a photo with optional caption.
+  // Send photo with optional caption.
   const response = await fetch(apiUrl('sendPhoto'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -79,7 +80,7 @@ async function sendPhoto(chatId, fileId, caption = '') {
 }
 
 async function sendVoice(chatId, fileId) {
-  // Sends a voice message.
+  // Send voice message.
   const response = await fetch(apiUrl('sendVoice'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +90,7 @@ async function sendVoice(chatId, fileId) {
 }
 
 async function sendDocument(chatId, fileId) {
-  // Sends a document.
+  // Send document.
   const response = await fetch(apiUrl('sendDocument'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -99,7 +100,7 @@ async function sendDocument(chatId, fileId) {
 }
 
 async function sendVideo(chatId, fileId) {
-  // Sends a video.
+  // Send video.
   const response = await fetch(apiUrl('sendVideo'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -109,7 +110,7 @@ async function sendVideo(chatId, fileId) {
 }
 
 async function sendLocation(chatId, latitude, longitude) {
-  // Sends a location message.
+  // Send location message.
   const response = await fetch(apiUrl('sendLocation'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -119,7 +120,7 @@ async function sendLocation(chatId, latitude, longitude) {
 }
 
 async function deleteMessage(chatId, messageId) {
-  // Deletes a specified message.
+  // Delete a specified message.
   const response = await fetch(apiUrl('deleteMessage'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -128,79 +129,18 @@ async function deleteMessage(chatId, messageId) {
   return response.json();
 }
 
-// Main event listener and webhook handler
-addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  if (url.pathname === WEBHOOK) {
-    event.respondWith(handleWebhook(event));
-  } else if (url.pathname === '/registerWebhook') {
-    event.respondWith(registerWebhook(event, url, WEBHOOK, SECRET));
-  } else if (url.pathname === '/unRegisterWebhook') {
-    event.respondWith(unRegisterWebhook(event));
-  } else {
-    event.respondWith(new Response('No handler for this request'));
-  }
-});
-
-async function handleWebhook(event) {
-  // Verify secret token then dispatch update asynchronously.
-  if (event.request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== SECRET) {
-    return new Response('Unauthorized', { status: 403 });
-  }
-  const update = await event.request.json();
-  event.waitUntil(onUpdate(update));
-  return new Response('Ok');
-}
-
-async function onUpdate(update) {
-  // Dispatch update to onMessage if it's a message.
-  if ('message' in update) {
-    await onMessage(update.message);
-  }
-}
-
+// -----------------------
 // Message processing functions
-async function onMessage(message) {
-  const chatId = message.chat.id;
-  const userName = message.from.username ? `@${message.from.username}` : message.from.first_name;
-  
-  if (message.text) {
-    const trimmed = message.text.trim();
-    if (trimmed === '/uid') {
-      await handleUid(message);
-      return;
-    }
-    if (trimmed === '/help' || trimmed === '/start') {
-      if (chatId == ADMIN_UID) {
-        await handleAdminCommand(message);
-      } else {
-        await handleGuestCommand(message);
-      }
-      return;
-    }
-  }
-  
-  if (chatId == ADMIN_UID) {
-    if (message.text && message.text.startsWith('/')) {
-      await handleAdminCommand(message);
-    } else if (message.reply_to_message) {
-      await handleAdminReply(message);
-    }
-  } else {
-    await handleUserMessage(message, userName);
-  }
-}
-
+// -----------------------
 async function handleUid(message) {
   await deleteMessage(message.chat.id, message.message_id);
-  // Replies with the user's ID.
+  // Reply with the user's ID.
   const userId = message.from.id;
   const responseText = `Your user ID is: ${userId}`;
   await sendPlainText(message.chat.id, responseText);
 }
 
 async function handleUserMessage(message, userName) {
-  // Processes and forwards user messages to the admin.
   let userMessageText = '';
   let response = null;
   
@@ -236,7 +176,6 @@ async function handleUserMessage(message, userName) {
   await KV_NAMESPACE.put(LAST_USER_KEY, message.chat.id.toString());
 }
 
-// Administrator command and reply handlers
 async function handleAdminCommand(message, threadId = null) {
   try {
     const text = message.text || "";
@@ -250,14 +189,11 @@ async function handleAdminCommand(message, threadId = null) {
     }
     
     switch (command) {
-      case '/help':
-        {
-          const helpText = "Admin commands:\n" + commands.admin.map(cmd => `/${cmd.command} - ${cmd.description}`).join('\n');
-          await sendMessage(message.chat.id, helpText, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/block':
-        {
+      case '/help': {
+        const helpText = "Admin commands:\n" + commands.admin.map(cmd => `/${cmd.command} - ${cmd.description}`).join('\n');
+        await sendMessage(message.chat.id, helpText, threadId ? { message_thread_id: threadId } : {});
+      } break;
+      case '/block': {
           let userId = args[0];
           if (!userId && message.reply_to_message) {
             userId = await KV_NAMESPACE.get(`admin_message_${message.reply_to_message.message_id}`);
@@ -272,10 +208,8 @@ async function handleAdminCommand(message, threadId = null) {
           }
           await KV_NAMESPACE.put(`block:${userId}`, 'true');
           await sendMessage(message.chat.id, `User ${userId} blocked`, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/unblock':
-        {
+      } break;
+      case '/unblock': {
           let userId = args[0];
           if (!userId && message.reply_to_message) {
             userId = await KV_NAMESPACE.get(`admin_message_${message.reply_to_message.message_id}`);
@@ -290,10 +224,8 @@ async function handleAdminCommand(message, threadId = null) {
           }
           await KV_NAMESPACE.delete(`block:${userId}`);
           await sendMessage(message.chat.id, `User ${userId} unblocked`, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/info':
-        {
+      } break;
+      case '/info': {
           let targetId = args[0];
           if (!targetId && message.reply_to_message) {
             targetId = await KV_NAMESPACE.get(`admin_message_${message.reply_to_message.message_id}`);
@@ -305,10 +237,8 @@ async function handleAdminCommand(message, threadId = null) {
           const isBlocked = await KV_NAMESPACE.get(`block:${targetId}`);
           const infoText = `User Info:\nID: ${targetId}\nStatus: ${isBlocked ? 'Blocked' : 'Active'}`;
           await sendMessage(message.chat.id, infoText, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/list':
-        {
+      } break;
+      case '/list': {
           const listData = await KV_NAMESPACE.list();
           let userText = 'User List:\n';
           let count = 0;
@@ -321,10 +251,8 @@ async function handleAdminCommand(message, threadId = null) {
           }
           userText += `\nTotal: ${count} users`;
           await sendMessage(message.chat.id, userText, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/clean':
-        {
+      } break;
+      case '/clean': {
           const listData = await KV_NAMESPACE.list();
           let cleanCount = 0;
           for (const key of listData.keys) {
@@ -342,10 +270,8 @@ async function handleAdminCommand(message, threadId = null) {
             }
           }
           await sendMessage(message.chat.id, `Cleaned: ${cleanCount} invalid user entries`, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/status':
-        {
+      } break;
+      case '/status': {
           const listData = await KV_NAMESPACE.list();
           let total = 0, blockedCount = 0;
           for (const key of listData.keys) {
@@ -355,14 +281,13 @@ async function handleAdminCommand(message, threadId = null) {
             }
           }
           await sendMessage(message.chat.id, `Stats:\nTotal: ${total}\nBlocked: ${blockedCount}\nActive: ${total - blockedCount}`, threadId ? { message_thread_id: threadId } : {});
-        }
-        break;
-      case '/start': // Guest command
-        await sendMessage(message.chat.id, 'Welcome! Send a message to contact the admin.', threadId ? { message_thread_id: threadId } : {});
-        break;
+      } break;
+      case '/start': // Fallback for guest command.
+          await sendMessage(message.chat.id, 'Welcome! Send a message to contact the admin.', threadId ? { message_thread_id: threadId } : {});
+          break;
       default:
-        await sendMessage(message.chat.id, `Unknown command: ${command}`, threadId ? { message_thread_id: threadId } : {});
-        break;
+          await sendMessage(message.chat.id, `Unknown command: ${command}`, threadId ? { message_thread_id: threadId } : {});
+          break;
     }
   } catch (error) {
     console.error('Admin command error:', error);
@@ -371,7 +296,7 @@ async function handleAdminCommand(message, threadId = null) {
 }
 
 async function handleAdminReply(message) {
-  // Forwards admin's reply back to the originating user.
+  // Forward admin's reply back to the originating user.
   try {
     const threadId = message.message_thread_id;
     if (!threadId) return;
@@ -416,28 +341,65 @@ async function handleAdminReply(message) {
   }
 }
 
-// New function: handle guest commands
 async function handleGuestCommand(message) {
   const command = message.text.trim().split(' ')[0].toLowerCase();
   switch (command) {
-    case '/help':
-      {
+    case '/help': {
         const helpText = "Guest commands:\n" + commands.guest.map(cmd => `/${cmd.command} - ${cmd.description}`).join('\n');
         await sendMessage(message.chat.id, helpText);
-      }
-      break;
+    } break;
     case '/start':
-      await sendMessage(message.chat.id, 'Welcome! Send a message to contact the admin.');
-      break;
+        await sendMessage(message.chat.id, 'Welcome! Send a message to contact the admin.');
+        break;
     default:
-      await sendMessage(message.chat.id, `Unknown guest command: ${command}`);
-      break;
+        await sendMessage(message.chat.id, `Unknown guest command: ${command}`);
+        break;
   }
 }
 
-// Webhook registration functions (placed at the end)
+async function onMessage(message) {
+  const chatId = message.chat.id;
+  const userName = message.from.username ? `@${message.from.username}` : message.from.first_name;
+  
+  if (message.text) {
+    const trimmed = message.text.trim();
+    if (trimmed === '/uid') {
+      await handleUid(message);
+      return;
+    }
+    if (trimmed === '/help' || trimmed === '/start') {
+      if (chatId == ADMIN_UID) {
+        await handleAdminCommand(message);
+      } else {
+        await handleGuestCommand(message);
+      }
+      return;
+    }
+  }
+  
+  if (chatId == ADMIN_UID) {
+    if (message.text && message.text.startsWith('/')) {
+      await handleAdminCommand(message);
+    } else if (message.reply_to_message) {
+      await handleAdminReply(message);
+    }
+  } else {
+    await handleUserMessage(message, userName);
+  }
+}
+
+async function onUpdate(update) {
+  // Process update if it is a message.
+  if ('message' in update) {
+    await onMessage(update.message);
+  }
+}
+
+// -----------------------
+// Webhook registration functions
+// -----------------------
 async function registerWebhook(event, requestUrl, suffix, secret) {
-  // Registers the webhook with Telegram.
+  // Register webhook with Telegram.
   const webhookUrl = `${requestUrl.protocol}//${requestUrl.hostname}${suffix}`;
   const response = await fetch(apiUrl('setWebhook'), {
     method: 'POST',
@@ -449,7 +411,7 @@ async function registerWebhook(event, requestUrl, suffix, secret) {
 }
 
 async function unRegisterWebhook(event) {
-  // Unregisters the webhook (clears URL).
+  // Unregister webhook.
   const response = await fetch(apiUrl('setWebhook'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -457,4 +419,29 @@ async function unRegisterWebhook(event) {
   });
   const result = await response.json();
   return new Response(result.ok ? 'Ok' : JSON.stringify(result, null, 2));
+}
+
+// -----------------------
+// Main event listener & webhook handler
+// -----------------------
+addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (url.pathname === WEBHOOK) {
+    event.respondWith(handleWebhook(event));
+  } else if (url.pathname === '/registerWebhook') {
+    event.respondWith(registerWebhook(event, url, WEBHOOK, SECRET));
+  } else if (url.pathname === '/unRegisterWebhook') {
+    event.respondWith(unRegisterWebhook(event));
+  } else {
+    event.respondWith(new Response('No handler for this request'));
+  }
+});
+
+async function handleWebhook(event) {
+  if (event.request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== SECRET) {
+    return new Response('Unauthorized', { status: 403 });
+  }
+  const update = await event.request.json();
+  event.waitUntil(onUpdate(update));
+  return new Response('Ok');
 }
