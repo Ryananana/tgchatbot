@@ -12,6 +12,8 @@ const KV_NAMESPACE = tgchatbot;
 const LAST_USER_KEY = 'last_user';
 const USER_MESSAGES_KEY_PREFIX = 'user_message_';
 const ADMIN_RESPONSES_KEY_PREFIX = 'admin_response_';
+const USER_HISTORY_KEY_PREFIX = 'user_history_';
+const MAX_HISTORY = 100;
 
 // Define commands for admin and guest users.
 const commands = {
@@ -22,7 +24,8 @@ const commands = {
     { command: 'info', description: '查看用户信息' },
     { command: 'list', description: '列出所有用户' },
     { command: 'clean', description: '清理无效用户数据' },
-    { command: 'status', description: '显示统计信息' }
+    { command: 'status', description: '显示统计信息' },
+    { command: 'history', description: '查询用户历史对话 (回复消息或输入用户ID)' }
   ],
   guest: [
     { command: 'start', description: '开始使用机器人' },
@@ -140,6 +143,24 @@ async function handleUid(message) {
   await sendPlainText(message.chat.id, responseText);
 }
 
+async function appendUserHistory(userId, messageText) {
+  const key = `${USER_HISTORY_KEY_PREFIX}${userId}`;
+  let historyRaw = await KV_NAMESPACE.get(key);
+  let history = [];
+  if (historyRaw) {
+    try {
+      history = JSON.parse(historyRaw);
+    } catch (e) {
+      history = [];
+    }
+  }
+  history.push({ time: Date.now(), text: messageText });
+  if (history.length > MAX_HISTORY) {
+    history = history.slice(history.length - MAX_HISTORY);
+  }
+  await KV_NAMESPACE.put(key, JSON.stringify(history));
+}
+
 async function handleUserMessage(message, userName) {
   let userMessageText = '';
   let response = null;
@@ -174,6 +195,8 @@ async function handleUserMessage(message, userName) {
   }
   await KV_NAMESPACE.put(`${USER_MESSAGES_KEY_PREFIX}${message.chat.id}`, userMessageText);
   await KV_NAMESPACE.put(LAST_USER_KEY, message.chat.id.toString());
+  // 新增：追加历史
+  await appendUserHistory(message.chat.id, userMessageText);
 }
 
 async function handleAdminCommand(message, threadId = null) {
@@ -281,6 +304,50 @@ async function handleAdminCommand(message, threadId = null) {
             }
           }
           await sendMessage(message.chat.id, `Stats:\nTotal: ${total}\nBlocked: ${blockedCount}\nActive: ${total - blockedCount}`, threadId ? { message_thread_id: threadId } : {});
+      } break;
+      case '/history': {
+        // 新增：查询用户历史
+        let userId = args[0];
+        if (!userId && message.reply_to_message) {
+          userId = await KV_NAMESPACE.get(`admin_message_${message.reply_to_message.message_id}`);
+        }
+        if (!userId) {
+          await sendMessage(message.chat.id, '请指定用户ID或回复用户消息', threadId ? { message_thread_id: threadId } : {});
+          break;
+        }
+        const historyRaw = await KV_NAMESPACE.get(`${USER_HISTORY_KEY_PREFIX}${userId}`);
+        if (!historyRaw) {
+          await sendMessage(message.chat.id, `用户${userId}暂无历史消息`, threadId ? { message_thread_id: threadId } : {});
+          break;
+        }
+        let history;
+        try {
+          history = JSON.parse(historyRaw);
+        } catch (e) {
+          history = [];
+        }
+        if (!Array.isArray(history) || history.length === 0) {
+          await sendMessage(message.chat.id, `用户${userId}暂无历史消息`, threadId ? { message_thread_id: threadId } : {});
+          break;
+        }
+        // 格式化历史消息
+        let msg = `用户${userId}最近${history.length}条消息：\n`;
+        msg += history.map((item, idx) => {
+          const date = new Date(item.time).toLocaleString('zh-CN');
+          return `${idx + 1}. [${date}]\n${item.text}`;
+        }).join('\n\n');
+        // Telegram单条消息有长度限制，必要时分段发送
+        const MAX_LEN = 3500;
+        if (msg.length <= MAX_LEN) {
+          await sendMessage(message.chat.id, msg, threadId ? { message_thread_id: threadId } : {});
+        } else {
+          // 分段发送
+          let start = 0;
+          while (start < msg.length) {
+            await sendMessage(message.chat.id, msg.slice(start, start + MAX_LEN), threadId ? { message_thread_id: threadId } : {});
+            start += MAX_LEN;
+          }
+        }
       } break;
       case '/start': // Fallback for guest command.
           await sendMessage(message.chat.id, 'Welcome! Send a message to contact the admin.', threadId ? { message_thread_id: threadId } : {});
